@@ -1,0 +1,61 @@
+---
+title:    "Data Import and Cleaning"
+author:   "Michael Grix"
+date:     "06Oct2024"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(ISLR)
+library(ggformula)
+library(dplyr)
+library(lubridate)
+library(ISOweek)
+```
+
+```{r import}
+raw_data <- read.csv("./RawData/Starting Data.csv", header = TRUE, sep = ",")
+```
+
+```{r date handling production}
+
+#Find missing dates
+invalid_dates <- raw_data$Production.Date == ""
+raw_data$Production.Date[invalid_dates] <- NA
+
+raw_data$prod_year <- substr(raw_data$Production.Date, 1, 4)
+raw_data$prod_week <- substr(raw_data$Production.Date, 6, 7)
+raw_data$prod_year <- as.numeric(raw_data$prod_year)
+raw_data$prod_week <- as.numeric(raw_data$prod_week)
+
+raw_data$start_of_year <- ymd(paste0(raw_data$prod_year, "-01-01"))
+
+
+assign_days <- function(week_samples) {
+   days_of_week <- c(0, 2, 4, 6)  # For lots made within the same week, assigning them sun, tue, thurs, or sat
+  
+  # Assign day based on the position within the week
+  num_samples <- nrow(week_samples)
+  assigned_days <- days_of_week[1:num_samples]  # Assign up to 3 days
+
+  # Calculate the exact date for the first sample's week
+  week_start_date <- week_samples$start_of_year[1] + weeks(week_samples$prod_week[1] - 1 )
+
+  # Assign final dates
+  week_samples$assigned_date <- week_start_date + days(assigned_days - 1)  # Adjust to Mon, Wed, Fri
+
+  return(week_samples)
+}
+
+
+raw_data <- raw_data %>%
+  group_by(prod_year, prod_week) %>%
+  do(assign_days(.))
+
+```
+
+
