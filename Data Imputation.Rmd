@@ -1,0 +1,67 @@
+---
+title:    "Missing data handling"
+author:   "Michael Grix"
+date:     "06Oct2024"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(ISLR)
+library(ggformula)
+library(dplyr)
+library(lubridate)
+library(ISOweek)
+library(VIM)
+library(mice)
+library(randomForest)
+```
+
+```{r Protein BC imputation knn}
+# Load the dataset
+data <- read.csv("./Clean Data/clean_data.csv", header = TRUE, sep = ",")
+
+# Specify the columns you want to use for KNN imputation
+columns_to_use <- c("Production.Set.Point.A", "Production.Set.Point.B", 
+                    "Production.Set.Point.C", "Production.Set.Point.D", 
+                    "Growth.Time.A", "Growth.Slope.A", "Growth.Slope.B", 
+                    "Growth.Max", "Growth.Slope.C", "Growth.Time.B", 
+                    "Protein.Conc.A", "Protein.C")  
+
+columns_to_impute <- c("Protein.Conc.B", "Protein.Conc.C")  # Columns that need imputation
+
+# Perform KNN imputation directly on the entire dataset
+knn_data <- kNN(data[, c(columns_to_use, columns_to_impute)], k = 5)
+
+# Save the imputed results to new columns in the original dataset
+for (i in seq_along(columns_to_impute)) {
+  # Create new column names for the imputed data
+  new_col_name <- paste0(columns_to_impute[i], "_KNNimputed")
+  
+  # Assign the imputed values to new columns in the original dataset
+  data[[new_col_name]] <- knn_data[[columns_to_impute[i]]]  # Use [[ ]] for correct assignment
+}
+
+# Optionally, save the updated dataset with imputed values
+write.csv(data, "./Clean Data/clean_data_with_imputed.csv", row.names = FALSE)
+
+```
+
+
+
+```{r Protein BC imputation mice}
+
+
+# Train a random forest model on the complete data
+rf_model <- randomForest(Protein.Conc.C ~ ., data = data[complete.cases(data), c(columns_to_use, "Protein.Conc.C")], importance = TRUE)
+
+# Get the importance of each feature
+importance_scores <- importance(rf_model)
+importance_df <- data.frame(Feature = rownames(importance_scores), Importance = importance_scores[, 1])
+print(importance_df)
+
+```
+

@@ -23,39 +23,46 @@ raw_data <- read.csv("./RawData/Starting Data.csv", header = TRUE, sep = ",")
 
 ```{r date handling production}
 
-#Find missing dates
-invalid_dates <- raw_data$Production.Date == ""
-raw_data$Production.Date[invalid_dates] <- NA
-
-raw_data$prod_year <- substr(raw_data$Production.Date, 1, 4)
-raw_data$prod_week <- substr(raw_data$Production.Date, 6, 7)
-raw_data$prod_year <- as.numeric(raw_data$prod_year)
-raw_data$prod_week <- as.numeric(raw_data$prod_week)
-
-raw_data$start_of_year <- ymd(paste0(raw_data$prod_year, "-01-01"))
-
-
-assign_days <- function(week_samples) {
-   days_of_week <- c(0, 2, 4, 6)  # For lots made within the same week, assigning them sun, tue, thurs, or sat
-  
-  # Assign day based on the position within the week
+## Date Handling
+assign_days <- function(week_samples, days_to_assign, column_name, year_column, week_column) {
+  # Ensure days_to_assign cycles if there are more samples than days provided
   num_samples <- nrow(week_samples)
-  assigned_days <- days_of_week[1:num_samples]  # Assign up to 3 days
-
-  # Calculate the exact date for the first sample's week
-  week_start_date <- week_samples$start_of_year[1] + weeks(week_samples$prod_week[1] - 1 )
-
+  assigned_days <- rep_len(days_to_assign, num_samples)  # Repeats days_to_assign if necessary
+  
+  # Calculate the start of the year for the given year_column
+  start_of_year <- ymd(paste0(week_samples[[year_column]][1], "-01-01"))
+  
+  # Calculate the start of the production week based on the week_column
+  week_start_date <- start_of_year + weeks(week_samples[[week_column]][1] - 1)
+  
   # Assign final dates
-  week_samples$assigned_date <- week_start_date + days(assigned_days - 1)  # Adjust to Mon, Wed, Fri
+  week_samples[[column_name]] <- week_start_date + days(assigned_days)
 
   return(week_samples)
 }
 
+# Production Dates
+raw_data$prod_year <- as.numeric(substr(raw_data$Production.Date, 1, 4))
+raw_data$prod_week <- as.numeric(substr(raw_data$Production.Date, 6, 7))
 
+# Apply the assign_days function to production dates
 raw_data <- raw_data %>%
   group_by(prod_year, prod_week) %>%
-  do(assign_days(.))
+  do(assign_days(., days_to_assign = c(0, 2, 4, 6), column_name = "Prod_date", year_column = "prod_year", week_column = "prod_week"))
+
+# Potency Dates
+raw_data$pot_year <- as.numeric(substr(raw_data$Potency.Test.Date, 1, 4))
+raw_data$pot_week <- as.numeric(substr(raw_data$Potency.Test.Date, 6, 7))
+
+# Apply the assign_days function to potency test dates
+raw_data <- raw_data %>%
+  group_by(pot_year, pot_week) %>%
+  do(assign_days(., days_to_assign = c(1, 5), column_name = "Potency_date", year_column = "pot_year", week_column = "pot_week"))
+
+
+write.csv(raw_data, "Clean Data/clean_data.csv", row.names = FALSE)
 
 ```
+
 
 
