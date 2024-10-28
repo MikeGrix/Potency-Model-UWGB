@@ -64,4 +64,27 @@ importance_df <- data.frame(Feature = rownames(importance_scores), Importance = 
 print(importance_df)
 
 ```
+```{r Product B method offset due to method change}
+
+data$Potency <- as.numeric(gsub("%", "", data$Potency))
+
+data <- data %>%
+  mutate(
+    corrected_potency = ifelse(Family == "B" & Potency_date < as.Date("2017-11-27"),
+                             Potency / 1.69,  # Apply correction
+                             Potency)  # Keep original value
+  )
+
+data_temp <- data %>% select(-Protein.Conc.B, -Protein.Conc.C)
+
+# Remove rows with missing values in the remaining columns
+data_clean <- na.omit(data_temp)
+
+```
+
+```{r}
+write.csv(data_clean, "Clean Data/model_data.csv", row.names = FALSE)
+```
+
+
 
