@@ -60,6 +60,9 @@ raw_data <- raw_data %>%
   do(assign_days(., days_to_assign = c(1, 5), column_name = "Potency_date", year_column = "pot_year", week_column = "pot_week"))
 
 
+raw_data$Vacc_age <- as.numeric(difftime(raw_data$Potency_date, raw_data$Prod_date, units = "days"))
+
+
 write.csv(raw_data, "Clean Data/clean_data.csv", row.names = FALSE)
 
 ```
