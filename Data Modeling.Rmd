@@ -30,7 +30,7 @@ data <- read.csv("./Clean Data/model_data.csv", header = TRUE, sep = ",")
 data$log_corrected_potency <- log(data$corrected_potency)
 
 
-columns_to_use <- c("Production.Set.Point.A","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
+columns_to_use <- c("Family","Production.Set.Point.A","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
 "Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
 
 
@@ -43,8 +43,7 @@ test_data <- data[-train_index, ]
 
 # Subset the data for training and testing
 train_data <- train_data[, c(columns_to_use, "log_corrected_potency")]
-test_data <- test_data[, c(columns_to_use, "log_corrected_potency")]
-
+test_data <- test_data[, c(columns_to_use, "corrected_potency")]
 
 ```
 
@@ -54,9 +53,12 @@ svr_model <- svm(log_corrected_potency ~ ., data = train_data, type = "eps-regre
 
 # Predict on the test set
 svr_predictions <- predict(svr_model, test_data)
+# Un-log the predicted results
+svr_predictions_original_scale <- exp(svr_predictions)
+
 
 # Calculate RMSE for SVR
-svr_rmse <- sqrt(mean((test_data$log_corrected_potency - svr_predictions)^2))
+svr_rmse <- sqrt(mean((test_data$corrected_potency - svr_predictions_original_scale)^2))
 print(paste("SVR RMSE:", svr_rmse))
 
 ```
@@ -103,59 +105,48 @@ print(paste("Best RMSE from cross-validation:", best_rmse))
 # Make predictions on the test set using the best model
 rfr_predictions <- predict(tuned_rfr, test_data)
 
+rfr_predictions_original_scale = exp(rfr_predictions)
+
 # Calculate RMSE on the test set
-test_rmse <- sqrt(mean((test_data$log_corrected_potency - rfr_predictions)^2))
+test_rmse <- sqrt(mean((test_data$corrected_potency - rfr_predictions_original_scale)^2))
 print(paste("Test RMSE after tuning:", test_rmse))
 
-# Plot the tuning results
-plot(tuned_rfr)
-
-# Plot feature importance
-varImpPlot(tuned_rfr$finalModel)
-
-
-
-# Make predictions on the test set using the tuned model
-rfr_predictions <- predict(tuned_rfr, test_data)
-
-# Combine observed and predicted values into a data frame for plotting
-results_df <- data.frame(
-  Observed = test_data$log_corrected_potency,  # Replace with your actual target variable name
-  Predicted = rfr_predictions
-)
 ```
-```{r}
-ggplot(results_df, aes(x = Observed, y = Predicted)) +
-  geom_point(color = 'blue', alpha = 0.5) +   # Scatter plot
-  geom_abline(slope = 1, intercept = 0, color = 'red', linetype = 'dashed') +  # Reference line
-  labs(title = "Observed vs. Predicted Potency",
-       x = "Observed Potency",
-       y = "Predicted Potency") +
-  theme_minimal()  # Use a minimal theme for a cleaner look
-```
+
+
+
 ```{r}
 # Prepare the training data
-dtrain <- xgb.DMatrix(data = as.matrix(train_data[, -which(names(train_data) == "log_corrected_potency")]),  # All columns except the target
-                      label = train_data$log_corrected_potency)  # Target variable (log-transformed potency)
+# Convert Family column from A/B to 1/2
+xgb_train_data <- train_data %>%
+  mutate(Family = ifelse(Family == "A", 1, 2))
+
+
+dtrain <- xgb.DMatrix(data = as.matrix(xgb_train_data[, -which(names(xgb_train_data) == "log_corrected_potency")]),  # All columns except the target
+                      label = xgb_train_data$log_corrected_potency)  # Target variable (log-transformed potency)
 
 # Prepare the test data
-dtest <- xgb.DMatrix(data = as.matrix(test_data[, -which(names(test_data) %in% c("corrected_potency", "log_corrected_potency"))]),  # All columns except the targets
-                     label = test_data$log_corrected_potency)  # Use log_corrected_potency for evaluation
+xgb_test_data <- test_data %>%
+  mutate(Family = ifelse(Family == "A", 1, 2))
+
+dtest <- xgb.DMatrix(data = as.matrix(xgb_test_data[, -which(names(xgb_test_data) %in% c("corrected_potency", "log_corrected_potency"))]),  # All columns except the targets
+                     label = xgb_test_data$log_corrected_potency)  # Use log_corrected_potency for evaluation
 
 
 # Define hyperparameter grid
 tune_grid <- expand.grid(
-  nrounds = c(100, 200, 300),             # Number of boosting iterations
-  max_depth = c(3, 5, 7),                 # Maximum depth of trees
-  eta = c(0.01, 0.1, 0.2),                # Learning rate
-  gamma = c(0, 1, 5),                     # Minimum loss reduction required to make a further partition
-  colsample_bytree = c(0.6, 0.8, 1.0),   # Subsample ratio of columns when constructing each tree
+  nrounds = c(50, 200),             # Number of boosting iterations
+  max_depth = c(3, 5),                 # Maximum depth of trees
+  eta = c(0.05, 0.1),                # Learning rate
+  gamma = c(0, 1),                     # Minimum loss reduction required to make a further partition
+  colsample_bytree = c(0.6, 0.8),   # Subsample ratio of columns when constructing each tree
   min_child_weight = c(1, 3, 5),          # Minimum sum of instance weight needed in a child
   subsample = c(0.6, 0.8, 1.0)            # Subsample ratio of the training instances
 )
 
+
 # Define control for training
-train_control <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+train_control <- trainControl(method = "cv", number = 3)  # 5-fold cross-validation
 
 set.seed(123)  # For reproducibility
 
@@ -172,34 +163,26 @@ suppressWarnings({
 
 
 xgb_predictions <- predict(xgb_model, newdata = test_data)
+xgb_predictions_original_scale = exp(xgb_predictions)
 
 # Calculate RMSE
-test_rmse <- sqrt(mean((test_data$log_corrected_potency - xgb_predictions)^2))
+xgb_rmse <- sqrt(mean((test_data$corrected_potency - xgb_predictions_original_scale)^2))
 print(paste("Test RMSE:", test_rmse))
 
 
-# Combine observed and predicted values into a data frame for plotting
-results_df <- data.frame(
-  Observed = test_data$log_corrected_potency,  # Original observed potency
-  Predicted = xgb_predictions                 # Inverse-transformed predictions
-)
-
-# Create the plot
-ggplot(results_df, aes(x = Observed, y = Predicted)) +
-  geom_point(color = 'blue', alpha = 0.5) +   # Scatter plot
-  geom_abline(slope = 1, intercept = 0, color = 'red', linetype = 'dashed') +  # Reference line
-  labs(title = "Observed vs. Predicted Potency (XGBoost)",
-       x = "Observed Potency",
-       y = "Predicted Potency") +
-  theme_minimal()
-
-
 ```
+
+
 ```{r}
 # Normalize or scale numeric columns in training and test sets
 preprocess_params <- preProcess(train_data, method = c("center", "scale"))
-train_data <- predict(preprocess_params, train_data)
-test_data <- predict(preprocess_params, test_data)
+ann_train_data <- predict(preprocess_params, train_data)
+
+test_data$log_corrected_potency <- log(test_data$corrected_potency)
+data_temp <- test_data %>% select(-corrected_potency)
+
+ann_test_data <- predict(preprocess_params, data_temp)
+
 
 # Define hyperparameter grid for tuning
 tune_grid <- expand.grid(
@@ -230,27 +213,13 @@ ann_model <- train(
 ann_predictions <- predict(ann_model, newdata = test_data)
 
 # Inverse the log transformation to compare with original potency values
+ann_predictions_original_scale = exp(ann_predictions)
+
 
 
 # Calculate RMSE on the test set
-test_rmse <- sqrt(mean((test_data$log_corrected_potency - ann_predictions)^2))
+ann_rmse <- sqrt(mean((test_data$corrected_potency - ann_predictions_original_scale)^2))
 print(paste("Test RMSE:", test_rmse))
-
-# Prepare data for plotting
-results_df <- data.frame(
-  Observed = test_data$log_corrected_potency,
-  Predicted = ann_predictions
-)
-
-# Plot observed vs. predicted potency
-library(ggplot2)
-ggplot(results_df, aes(x = Observed, y = Predicted)) +
-  geom_point(color = 'blue', alpha = 0.5) +
-  geom_abline(slope = 1, intercept = 0, color = 'red', linetype = 'dashed') +
-  labs(title = "Observed vs. Predicted Potency (ANN)",
-       x = "Observed Potency",
-       y = "Predicted Potency") +
-  theme_minimal()
 
 ```
 
@@ -262,8 +231,12 @@ mean_potency <- mean(train_data$log_corrected_potency, na.rm = TRUE)
 # Create predictions using the mean
 mean_predictions <- rep(mean_potency, nrow(test_data))
 
+# Inverse the log transformation to compare with original potency values
+mean_predictions_original_scale = exp(mean_predictions)
+
+
 # Calculate RMSE for the mean baseline
-mean_rmse <- sqrt(mean((test_data$log_corrected_potency - mean_predictions)^2))
+mean_rmse <- sqrt(mean((test_data$corrected_potency - mean_predictions_original_scale)^2))
 print(paste("Mean Baseline RMSE:", mean_rmse))
 
 # Predict the median of Potency for all test samples
@@ -272,8 +245,11 @@ median_potency <- median(train_data$log_corrected_potency, na.rm = TRUE)
 # Create predictions using the median
 median_predictions <- rep(median_potency, nrow(test_data))
 
+# Inverse the log transformation to compare with original potency values
+median_predictions_original_scale = exp(median_predictions)
+
 # Calculate RMSE for the median baseline
-median_rmse <- sqrt(mean((test_data$log_corrected_potency - median_predictions)^2))
+median_rmse <- sqrt(mean((test_data$corrected_potency - median_predictions_original_scale)^2))
 print(paste("Median Baseline RMSE:", median_rmse))
 
 ```

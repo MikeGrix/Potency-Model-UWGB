@@ -64,6 +64,7 @@ importance_df <- data.frame(Feature = rownames(importance_scores), Importance = 
 print(importance_df)
 
 ```
+
 ```{r Product B method offset due to method change}
 
 data$Potency <- as.numeric(gsub("%", "", data$Potency))
