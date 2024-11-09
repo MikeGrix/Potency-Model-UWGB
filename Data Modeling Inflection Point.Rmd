@@ -1,0 +1,278 @@
+---
+title: "Data Modeling Inflection Point"
+author: "Michael Grix"
+date: "2024-10-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(ISLR)
+library(ggformula)
+
+library(caret)  # for data splitting and modeling
+library(e1071)  # for SVR
+library(randomForest)  # for Random Forest Regression
+library(xgboost)
+
+library(nnet)
+library(ggplot2)
+
+```
+
+```{r}
+# Load the dataset
+data <- read.csv("./Clean Data/model_data.csv", header = TRUE, sep = ",")
+
+
+
+columns_to_use <- c("Family","Production.Set.Point.A","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
+"Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
+
+
+# Split data into training and testing sets (80% training, 20% testing)
+set.seed(123)  # for reproducibility
+train_index <- createDataPartition(data$Inflection, p = 0.8, list = FALSE)
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+
+
+# Subset the data for training and testing
+train_data <- train_data[, c(columns_to_use, "Inflection")]
+test_data <- test_data[, c(columns_to_use, "Inflection")]
+
+```
+
+```{r}
+# Train SVR model using selected columns
+svr_model <- svm(Inflection ~ ., data = train_data, type = "eps-regression")
+
+# Predict on the test set
+svr_predictions <- predict(svr_model, test_data)
+
+# Calculate RMSE for SVR
+svr_rmse <- sqrt(mean((test_data$Inflection - svr_predictions)^2))
+print(paste("SVR RMSE:", svr_rmse))
+
+```
+
+
+```{r}
+# Define the tuning grid
+tune_grid <- expand.grid(
+  mtry = c(2, 3, 4)  # Try different numbers of predictors
+)
+
+# Define cross-validation settings (5-fold in this example)
+train_control <- trainControl(
+  method = "cv",         # Cross-validation
+  number = 5,            # 5-fold cross-validation
+  verboseIter = TRUE     # To see progress
+)
+
+set.seed(123)  # For reproducibility
+
+# Train the Random Forest model with cross-validation
+tuned_rfr <- train(
+  Inflection ~ .,      # Formula for target and predictors
+  data = train_data,          # Training dataset
+  method = "rf",              # Random Forest method
+  trControl = train_control,  # Cross-validation control
+  tuneGrid = tune_grid,       # Hyperparameter grid
+  ntree = 1000                 # Set the number of trees
+)
+
+# View the results of tuning
+print(tuned_rfr)
+
+
+# Get the best tuned model's hyperparameters
+best_mtry <- tuned_rfr$bestTune$mtry
+print(paste("Best mtry:", best_mtry))
+
+# Best RMSE from cross-validation
+best_rmse <- min(tuned_rfr$results$RMSE)
+print(paste("Best RMSE from cross-validation:", best_rmse))
+
+
+# Make predictions on the test set using the best model
+rfr_predictions <- predict(tuned_rfr, test_data)
+
+
+# Calculate RMSE on the test set
+rfr_rmse <- sqrt(mean((test_data$Inflection - rfr_predictions)^2))
+print(paste("Test RMSE after tuning:", test_rmse))
+
+```
+
+
+
+```{r}
+# Prepare the training data
+# Convert Family column from A/B to 1/2
+xgb_train_data <- train_data %>%
+  mutate(Family = ifelse(Family == "A", 1, 2))
+
+
+dtrain <- xgb.DMatrix(data = as.matrix(xgb_train_data[, -which(names(xgb_train_data) == "Inflection")]),  # All columns except the target
+                      label = xgb_train_data$Inflection)  # Target variable (log-transformed potency)
+
+# Prepare the test data
+xgb_test_data <- test_data %>%
+  mutate(Family = ifelse(Family == "A", 1, 2))
+
+dtest <- xgb.DMatrix(data = as.matrix(xgb_test_data[, -which(names(xgb_test_data) %in% c("Inflection"))]),  # All columns except the targets
+                     label = xgb_test_data$Inflection)  # Use log_corrected_potency for evaluation
+
+
+# Define hyperparameter grid
+tune_grid <- expand.grid(
+  nrounds = c(50, 200),             # Number of boosting iterations
+  max_depth = c(3, 5),                 # Maximum depth of trees
+  eta = c(0.05, 0.1),                # Learning rate
+  gamma = c(0, 1),                     # Minimum loss reduction required to make a further partition
+  colsample_bytree = c(0.6, 0.8),   # Subsample ratio of columns when constructing each tree
+  min_child_weight = c(1, 3, 5),          # Minimum sum of instance weight needed in a child
+  subsample = c(0.6, 0.8, 1.0)            # Subsample ratio of the training instances
+)
+
+
+# Define control for training
+train_control <- trainControl(method = "cv", number = 3)  # 5-fold cross-validation
+
+set.seed(123)  # For reproducibility
+
+# Suppress warnings temporarily during model training
+suppressWarnings({
+  xgb_model <- train(
+    Inflection ~ .,              # Use the log-transformed potency variable
+    data = train_data,                      # Training dataset
+    method = "xgbTree",                     # XGBoost method
+    trControl = train_control,              # Cross-validation control
+    tuneGrid = tune_grid                    # Hyperparameter grid
+  )
+})
+
+
+xgb_predictions <- predict(xgb_model, newdata = test_data)
+
+# Calculate RMSE
+xgb_rmse <- sqrt(mean((test_data$Inflection - xgb_predictions)^2))
+print(paste("Test RMSE:", test_rmse))
+
+
+```
+
+
+```{r}
+# Normalize or scale numeric columns in training and test sets
+preprocess_params <- preProcess(train_data[, -which(names(train_data) == "Inflection")], method = c("center", "scale"))
+
+# Apply preprocessing to the training data
+ann_train_data <- predict(preprocess_params, train_data[, -which(names(train_data) == "Inflection")])
+
+# Apply preprocessing to the test data, excluding only the Inflection column
+ann_test_data <- predict(preprocess_params, test_data[, -which(names(test_data) == "Inflection")])
+
+
+
+# Define hyperparameter grid for tuning
+tune_grid <- expand.grid(
+  size = c(3, 5, 7),        # Number of units in the hidden layer
+  decay = c(0.1, 0.01, 0.001)  # Regularization parameter to avoid overfitting
+)
+
+# Set up cross-validation
+train_control <- trainControl(
+  method = "cv",
+  number = 5,
+  verboseIter = TRUE
+)
+
+# Train the ANN model
+set.seed(123)  # For reproducibility
+ann_model <- train(
+  Inflection ~ .,      # Target and predictors
+  data = train_data,              # Training dataset
+  method = "nnet",                # Neural network method in caret
+  trControl = train_control,      # Cross-validation control
+  tuneGrid = tune_grid,           # Hyperparameter grid
+  linout = TRUE                   # For regression output (continuous)
+)
+
+
+# Predict on the test set
+ann_predictions <- predict(ann_model, newdata = test_data)
+
+# Calculate RMSE on the test set
+ann_rmse <- sqrt(mean((test_data$Inflection - ann_predictions)^2))
+print(paste("Test RMSE:", test_rmse))
+
+```
+
+
+```{r}
+# Calculate the mean and median potency by family
+family_stats <- train_data %>%
+  group_by(Family) %>%
+  summarize(
+    mean_potency = mean(Inflection, na.rm = TRUE),
+    median_potency = median(Inflection, na.rm = TRUE)
+  )
+
+# Merge family-based mean and median predictions into test_data
+test_data <- test_data %>%
+  left_join(family_stats, by = "Family")
+
+# Create predictions using family-based mean and median
+mean_predictions <- test_data$mean_potency
+median_predictions <- test_data$median_potency
+
+# Calculate RMSE for the family-based mean baseline
+mean_rmse <- sqrt(mean((test_data$Inflection - mean_predictions)^2, na.rm = TRUE))
+print(paste("Family-Based Mean Baseline RMSE:", mean_rmse))
+
+# Calculate RMSE for the family-based median baseline
+median_rmse <- sqrt(mean((test_data$Inflection - median_predictions)^2, na.rm = TRUE))
+print(paste("Family-Based Median Baseline RMSE:", median_rmse))
+
+
+```
+
+```{r}
+
+# Define RMSE values for each model
+rmse_values <- data.frame(
+  Model = c("Mean Baseline", "Median Baseline", "SVR", "RFR", "XGBoost", "ANN"),
+  RMSE = c(mean_rmse, median_rmse, svr_rmse, rfr_rmse, xgb_rmse, ann_rmse)
+)
+
+# Convert 'Model' to a factor and set levels to control the display order
+rmse_values$Model <- factor(rmse_values$Model, levels = c("Mean Baseline", "Median Baseline", "SVR", "RFR", "XGBoost", "ANN"))
+
+# Create bar plot
+ggplot(rmse_values, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "RMSE Comparison of Models",
+       x = "Model",
+       y = "RMSE") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5, size = 3.5)
+
+
+```
+
+```{r}
+# Plot histogram for Inflection, colored by Family
+ggplot(train_data, aes(x = Inflection, fill = Family)) +
+  geom_histogram(bins = 30, color = "black", alpha = 0.7, position = "identity") +
+  labs(title = "Histogram of Inflection by Family", x = "Inflection", y = "Frequency") +
+  scale_fill_manual(values = c("skyblue", "coral")) +  # Customize colors for each Family
+  theme_minimal()
+
+```
+
