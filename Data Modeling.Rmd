@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r includes, message=FALSE}
 library(ISLR)
 library(ggformula)
+library(corrplot)
 
 library(caret)  # for data splitting and modeling
 library(e1071)  # for SVR
@@ -27,12 +28,41 @@ library(ggplot2)
 # Load the dataset
 data <- read.csv("./Clean Data/model_data.csv", header = TRUE, sep = ",")
 
+
 data$log_corrected_potency <- log(data$corrected_potency)
 
 
 columns_to_use <- c("Family","Production.Set.Point.A","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
 "Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
 
+# Step 1: Subset only numeric predictors
+numeric_predictors <- data %>%
+  select(all_of(columns_to_use)) %>%
+  select(where(is.numeric))
+
+# Step 2: Compute the correlation matrix
+correlation_matrix <- cor(numeric_predictors, use = "pairwise.complete.obs")
+
+# Step 3: Identify highly correlated predictors
+high_corr <- findCorrelation(correlation_matrix, cutoff = 0.7)  # set threshold as needed
+
+# Step 4: Output names of highly correlated columns
+if (length(high_corr) > 0) {
+  correlated_vars <- colnames(numeric_predictors)[high_corr]
+  cat("Highly correlated predictors (above threshold):\n", correlated_vars, "\n")
+} else {
+  cat("No predictors found above the correlation threshold.\n")
+}
+
+# Create a correlation heatmap
+corrplot(correlation_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 45,  # Text color and rotation
+         col = colorRampPalette(c("blue", "white", "red"))(200))  # Color gradient
+
+```
+
+
+```{r}
 
 # Split data into training and testing sets (80% training, 20% testing)
 set.seed(123)  # for reproducibility
@@ -43,7 +73,7 @@ test_data <- data[-train_index, ]
 
 # Subset the data for training and testing
 train_data <- train_data[, c(columns_to_use, "log_corrected_potency")]
-test_data <- test_data[, c(columns_to_use, "corrected_potency")]
+test_data <- test_data[, c(columns_to_use,"log_corrected_potency", "corrected_potency")]
 
 ```
 
@@ -108,8 +138,8 @@ rfr_predictions <- predict(tuned_rfr, test_data)
 rfr_predictions_original_scale = exp(rfr_predictions)
 
 # Calculate RMSE on the test set
-test_rmse <- sqrt(mean((test_data$corrected_potency - rfr_predictions_original_scale)^2))
-print(paste("Test RMSE after tuning:", test_rmse))
+rfr_rmse <- sqrt(mean((test_data$corrected_potency - rfr_predictions_original_scale)^2))
+print(paste("Test RMSE after tuning:", rfr_rmse))
 
 ```
 
@@ -167,7 +197,7 @@ xgb_predictions_original_scale = exp(xgb_predictions)
 
 # Calculate RMSE
 xgb_rmse <- sqrt(mean((test_data$corrected_potency - xgb_predictions_original_scale)^2))
-print(paste("Test RMSE:", test_rmse))
+print(paste("Test RMSE:", xgb_rmse))
 
 
 ```
@@ -219,7 +249,7 @@ ann_predictions_original_scale = exp(ann_predictions)
 
 # Calculate RMSE on the test set
 ann_rmse <- sqrt(mean((test_data$corrected_potency - ann_predictions_original_scale)^2))
-print(paste("Test RMSE:", test_rmse))
+print(paste("Test RMSE:", ann_rmse))
 
 ```
 
@@ -251,6 +281,44 @@ median_predictions_original_scale = exp(median_predictions)
 # Calculate RMSE for the median baseline
 median_rmse <- sqrt(mean((test_data$corrected_potency - median_predictions_original_scale)^2))
 print(paste("Median Baseline RMSE:", median_rmse))
+
+```
+
+```{r}
+
+# Define RMSE values for each model
+rmse_values <- data.frame(
+  Model = c("Mean Baseline", "Median Baseline", "SVR", "RFR", "XGBoost", "ANN"),
+  RMSE = c(mean_rmse, median_rmse, svr_rmse, rfr_rmse, xgb_rmse, ann_rmse)
+)
+
+# Convert 'Model' to a factor and set levels to control the display order
+rmse_values$Model <- factor(rmse_values$Model, levels = c("Mean Baseline", "Median Baseline", "SVR", "RFR", "XGBoost", "ANN"))
+
+# Create bar plot
+ggplot(rmse_values, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  labs(title = "RMSE Comparison of Models",
+       x = "Model",
+       y = "RMSE") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5, size = 3.5)
+
+```
+
+```{r}
+# Plot histogram for log_corrected_potency
+ggplot(data, aes(x = corrected_potency)) +
+  geom_histogram(bins = 30, color = "black", fill = "skyblue", alpha = 0.7) +
+  labs(title = "Histogram of Corrected Potency", x = "Corrected Potency", y = "Frequency") +
+  theme_minimal()
+
+ggplot(data, aes(x = log_corrected_potency)) +
+  geom_histogram(bins = 30, color = "black", fill = "skyblue", alpha = 0.7) +
+  labs(title = "Histogram of Log Corrected Potency", x = "Log Corrected Potency", y = "Frequency") +
+  theme_minimal()
+
 
 ```
 
