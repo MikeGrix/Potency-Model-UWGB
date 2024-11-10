@@ -22,7 +22,6 @@ raw_data <- read.csv("./RawData/Starting Data.csv", header = TRUE, sep = ",")
 ```
 
 ```{r date handling production}
-
 ## Date Handling
 assign_days <- function(week_samples, days_to_assign, column_name, year_column, week_column) {
   # Ensure days_to_assign cycles if there are more samples than days provided
@@ -62,10 +61,22 @@ raw_data <- raw_data %>%
 
 raw_data$Vacc_age <- as.numeric(difftime(raw_data$Potency_date, raw_data$Prod_date, units = "days"))
 
+```
 
-write.csv(raw_data, "Clean Data/clean_data.csv", row.names = FALSE)
+```{r Product B method offset due to method change}
+
+raw_data$Potency <- as.numeric(gsub("%", "", raw_data$Potency))
+
+raw_data <- raw_data %>%
+  mutate(
+    corrected_potency = ifelse(Family == "B" & Potency_date < as.Date("2017-11-27"),
+                             Potency / 1.69,  # Apply correction
+                             Potency)  # Keep original value
+  )
 
 ```
 
-
+```{r}
+write.csv(raw_data, "Clean Data/clean_data.csv", row.names = FALSE)
+```
 
