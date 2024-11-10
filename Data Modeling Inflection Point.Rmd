@@ -28,10 +28,7 @@ library(ggplot2)
 data <- read.csv("./Clean Data/model_data.csv", header = TRUE, sep = ",")
 
 
-
-columns_to_use <- c("Family","Production.Set.Point.A","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
-"Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
-
+columns_to_use <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B","Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
 
 # Split data into training and testing sets (80% training, 20% testing)
 set.seed(123)  # for reproducibility
@@ -266,13 +263,4 @@ ggplot(rmse_values, aes(x = Model, y = RMSE, fill = Model)) +
 
 ```
 
-```{r}
-# Plot histogram for Inflection, colored by Family
-ggplot(train_data, aes(x = Inflection, fill = Family)) +
-  geom_histogram(bins = 30, color = "black", alpha = 0.7, position = "identity") +
-  labs(title = "Histogram of Inflection by Family", x = "Inflection", y = "Frequency") +
-  scale_fill_manual(values = c("skyblue", "coral")) +  # Customize colors for each Family
-  theme_minimal()
-
-```
 
