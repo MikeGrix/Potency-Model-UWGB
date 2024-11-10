@@ -1,0 +1,135 @@
+---
+title: "Data Exploration and Final Cleaning"
+author: "Michael Grix"
+date: "2024-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r includes, message=FALSE}
+library(ISLR)
+library(ggformula)
+library(corrplot)
+library(dplyr)
+library(reshape2)
+
+library(caret)  # for data splitting and modeling
+library(e1071)  # for SVR
+library(randomForest)  # for Random Forest Regression
+library(xgboost)
+
+library(nnet)
+library(ggplot2)
+
+```
+
+```{r}
+# Load the dataset
+data <- read.csv("./Clean Data/explore_data.csv", header = TRUE, sep = ",")
+
+
+data$log_corrected_potency <- log(data$corrected_potency)
+
+
+columns_to_use <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B",
+"Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
+
+# Step 1: Subset only numeric predictors
+numeric_predictors <- data %>%
+  select(all_of(columns_to_use)) %>%
+  select(where(is.numeric))
+
+# Step 2: Compute the correlation matrix
+correlation_matrix <- cor(numeric_predictors, use = "pairwise.complete.obs")
+
+# Step 3: Identify highly correlated predictors
+high_corr <- findCorrelation(correlation_matrix, cutoff = 0.7)  # set threshold as needed
+
+# Step 4: Output names of highly correlated columns
+if (length(high_corr) > 0) {
+  correlated_vars <- colnames(numeric_predictors)[high_corr]
+  cat("Highly correlated predictors (above threshold):\n", correlated_vars, "\n")
+} else {
+  cat("No predictors found above the correlation threshold.\n")
+}
+
+# Create a correlation heatmap
+png("correlation_plot.png", width = 1200, height = 800)  # Increase width/height as needed
+corrplot(correlation_matrix, method = "color", type = "upper",
+         tl.col = "black", tl.srt = 90,
+         col = colorRampPalette(c("blue", "white", "red"))(200))
+dev.off()
+
+# Select only the variables you want to plot
+data_subset <- data[, c("Production.Set.Point.A", "Production.Set.Point.B", "Production.Set.Point.C", "Production.Set.Point.D")]
+
+# Reshape data to long format
+data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
+
+# Create density plots in a grid
+ggplot(data_long, aes(x = Value)) +
+  geom_density(fill = "steelblue", alpha = 0.6) +
+  facet_wrap(~ SetPoint, scales = "free") +
+  labs(title = "", x = "Value", y = "Density") +
+  theme_minimal()
+
+
+data_subset <- data[, c("Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B")]
+
+# Reshape data to long format
+data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
+
+# Create density plots in a grid
+ggplot(data_long, aes(x = Value)) +
+  geom_density(fill = "steelblue", alpha = 0.6) +
+  facet_wrap(~ SetPoint, scales = "free") +
+  labs(title = "", x = "Value", y = "Density") +
+  theme_minimal()
+
+
+data_subset <- data[, c("Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")]
+
+# Reshape data to long format
+data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
+
+# Create density plots in a grid
+ggplot(data_long, aes(x = Value)) +
+  geom_density(fill = "steelblue", alpha = 0.6) +
+  facet_wrap(~ SetPoint, scales = "free") +
+  labs(title = "", x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+```{r}
+
+# Filter data to remove outliers
+data <- data[data$Growth.Time.A >= 80 & data$Growth.Time.A <= 150, ]
+
+# Plot histogram for log_corrected_potency
+ggplot(data, aes(x = corrected_potency)) +
+  geom_histogram(bins = 30, color = "black", fill = "skyblue", alpha = 0.7) +
+  labs(title = "Histogram of Corrected Potency", x = "Corrected Potency", y = "Frequency") +
+  theme_minimal()
+
+ggplot(data, aes(x = log_corrected_potency)) +
+  geom_histogram(bins = 30, color = "black", fill = "skyblue", alpha = 0.7) +
+  labs(title = "Histogram of Log Corrected Potency", x = "Log Corrected Potency", y = "Frequency") +
+  theme_minimal()
+
+# Plot histogram for Inflection, colored by Family
+ggplot(train_data, aes(x = Inflection, fill = Family)) +
+  geom_histogram(bins = 30, color = "black", alpha = 0.7, position = "identity") +
+  labs(title = "Histogram of Inflection by Family", x = "Inflection", y = "Frequency") +
+  scale_fill_manual(values = c("skyblue", "coral")) +  # Customize colors for each Family
+  theme_minimal()
+
+```
+```{r}
+
+# Save Data
+write.csv(data, "Clean Data/model_data.csv", row.names = FALSE)
+
+```
