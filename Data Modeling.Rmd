@@ -5,6 +5,25 @@ date: "2024-10-24"
 output: html_document
 ---
 
+```{r includes, message=FALSE}
+library(ISLR)
+library(ggformula)
+library(corrplot)
+library(dplyr)
+library(reshape2)
+
+library(caret)  # for data splitting and modeling
+library(e1071)  # for SVR
+library(randomForest)  # for Random Forest Regression
+library(xgboost)
+
+library(nnet)
+library(ggplot2)
+
+library(DiagrammeR)
+
+```
+
 
 
 ```{r}
@@ -29,8 +48,14 @@ test_data <- test_data[, c(columns_to_use,"log_corrected_potency", "corrected_po
 ```
 
 ```{r}
-# Train SVR model using selected columns
-svr_model <- svm(log_corrected_potency ~ ., data = train_data, type = "eps-regression")
+train_control <- trainControl(method = "cv", number = 5)  # cross-validation
+
+svr_model <- train(
+  log_corrected_potency ~ .,
+  data = train_data,
+  method = "svmRadial",
+  trControl = train_control
+)
 
 # Predict on the test set
 svr_predictions <- predict(svr_model, test_data)
@@ -48,7 +73,7 @@ svr_mae <- mean(abs(test_data$corrected_potency - svr_predictions_original_scale
 ```{r}
 # Define the tuning grid
 tune_grid <- expand.grid(
-  mtry = c(2, 3, 4)  # Try different numbers of predictors
+  mtry = c(5,6,7)  # Try different numbers of predictors
 )
 
 # Define cross-validation settings (5-fold in this example)
@@ -120,7 +145,7 @@ dtest <- xgb.DMatrix(data = as.matrix(xgb_test_data[, -which(names(xgb_test_data
 tune_grid <- expand.grid(
   nrounds = c(50, 200),             # Number of boosting iterations
   max_depth = c(3, 5),                 # Maximum depth of trees
-  eta = c(0.05, 0.1),                # Learning rate
+  eta = c(0.05, 0.3),                # Learning rate
   gamma = c(0, 1),                     # Minimum loss reduction required to make a further partition
   colsample_bytree = c(0.6, 0.8),   # Subsample ratio of columns when constructing each tree
   min_child_weight = c(1, 3, 5),          # Minimum sum of instance weight needed in a child
@@ -133,16 +158,14 @@ train_control <- trainControl(method = "cv", number = 3)  # 5-fold cross-validat
 
 set.seed(123)  # For reproducibility
 
-# Suppress warnings temporarily during model training
-suppressWarnings({
-  xgb_model <- train(
+xgb_model <- train(
     log_corrected_potency ~ .,              # Use the log-transformed potency variable
     data = train_data,                      # Training dataset
     method = "xgbTree",                     # XGBoost method
     trControl = train_control,              # Cross-validation control
-    tuneGrid = tune_grid                    # Hyperparameter grid
-  )
-})
+    tuneGrid = tune_grid,                    # Hyperparameter grid
+    verbosity = 0
+)
 
 
 xgb_predictions <- predict(xgb_model, newdata = test_data)
@@ -152,8 +175,8 @@ xgb_predictions_original_scale = exp(xgb_predictions)
 xgb_rmse <- sqrt(mean((test_data$corrected_potency - xgb_predictions_original_scale)^2))
 xgb_mae <- mean(abs(test_data$corrected_potency - xgb_predictions_original_scale))
 
-print(paste("Test RMSE:", xgb_rmse))
 
+xgb.importance(model = xgb_model$finalModel)
 
 ```
 
@@ -179,7 +202,7 @@ tune_grid <- expand.grid(
 train_control <- trainControl(
   method = "cv",
   number = 5,
-  verboseIter = TRUE
+  verboseIter = FALSE
 )
 
 # Train the ANN model
@@ -190,6 +213,7 @@ ann_model <- train(
   method = "nnet",                # Neural network method in caret
   trControl = train_control,      # Cross-validation control
   tuneGrid = tune_grid,           # Hyperparameter grid
+  maxit = 5000,
   linout = TRUE                   # For regression output (continuous)
 )
 
@@ -200,18 +224,14 @@ ann_predictions <- predict(ann_model, newdata = test_data)
 # Inverse the log transformation to compare with original potency values
 ann_predictions_original_scale = exp(ann_predictions)
 
-
-
 # Calculate RMSE on the test set
 ann_rmse <- sqrt(mean((test_data$corrected_potency - ann_predictions_original_scale)^2))
 ann_mae <- mean(abs(test_data$corrected_potency - ann_predictions_original_scale))
 
-print(paste("Test RMSE:", ann_rmse))
-
 ```
 
 
-```{r}
+```{r baseline}
 # Predict the mean of Potency for all test samples
 mean_potency <- mean(train_data$log_corrected_potency, na.rm = TRUE)
 
@@ -245,7 +265,7 @@ print(paste("Median Baseline RMSE:", median_rmse))
 
 ```
 
-```{r}
+```{r graphs}
 
 # Define RMSE values for each model
 rmse_values <- data.frame(
