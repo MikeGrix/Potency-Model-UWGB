@@ -35,7 +35,7 @@ columns_to_use <- c("Family","Production.Set.Point.B","Production.Set.Point.C","
 
 
 # Split data into training and testing sets (80% training, 20% testing)
-set.seed(123)  # for reproducibility
+set.seed(645)  # for reproducibility
 train_index <- createDataPartition(data$log_corrected_potency, p = 0.8, list = FALSE)
 train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
@@ -59,6 +59,7 @@ svr_model <- train(
 
 # Predict on the test set
 svr_predictions <- predict(svr_model, test_data)
+
 # Un-log the predicted results
 svr_predictions_original_scale <- exp(svr_predictions)
 
@@ -83,7 +84,7 @@ train_control <- trainControl(
   verboseIter = TRUE     # To see progress
 )
 
-set.seed(123)  # For reproducibility
+#set.seed(123)  # For reproducibility
 
 # Train the Random Forest model with cross-validation
 tuned_rfr <- train(
@@ -156,7 +157,7 @@ tune_grid <- expand.grid(
 # Define control for training
 train_control <- trainControl(method = "cv", number = 3)  # 5-fold cross-validation
 
-set.seed(123)  # For reproducibility
+#set.seed(123)  # For reproducibility
 
 xgb_model <- train(
     log_corrected_potency ~ .,              # Use the log-transformed potency variable
@@ -308,3 +309,41 @@ ggplot(mae_values, aes(x = Model, y = MAE, fill = Model)) +
 
 
 
+```{r}
+
+
+test_data <- test_data %>% 
+  mutate(SVR = svr_predictions_original_scale, RFR = rfr_predictions_original_scale, XGB = xgb_predictions_original_scale, ANN = ann_predictions_original_scale, mean = mean_predictions_original_scale)
+
+# Plot data
+ggplot(test_data, aes(x = corrected_potency)) +
+  # Points and fit lines for each model
+  geom_point(aes(y = SVR, color = "SVR")) +
+  geom_smooth(aes(y = SVR, color = "SVR"), method = "lm", se = FALSE) +
+  
+  geom_point(aes(y = RFR, color = "RFR")) +
+  geom_smooth(aes(y = RFR, color = "RFR"), method = "lm", se = FALSE) +
+  
+  geom_point(aes(y = XGB, color = "XGB")) +
+  geom_smooth(aes(y = XGB, color = "XGB"), method = "lm", se = FALSE) +
+  
+  geom_point(aes(y = ANN, color = "ANN")) +
+  geom_smooth(aes(y = ANN, color = "ANN"), method = "lm", se = FALSE) +
+  
+  # Identity line
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+  
+  # Color and labeling adjustments
+  scale_color_manual(
+    values = c("SVR" = "#00AFBB", "RFR" = "#E7B80D", "XGB" = "#FC4E07", "ANN" = "#663399"),
+    labels = c("SVR", "RFR", "XGB", "ANN")
+  ) +
+  labs(x = "Measured Relative Potency", y = "Predicted Realtive Potency") +
+  
+  # Faceting with free scales for each Family
+  facet_grid(~Family, scales = "free") +
+  theme_minimal()+
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 0.5))
+
+
+```
