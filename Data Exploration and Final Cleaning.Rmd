@@ -71,7 +71,7 @@ data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
 
 # Create density plots in a grid
 ggplot(data_long, aes(x = Value)) +
-  geom_density(fill = "steelblue", alpha = 0.6) +
+  geom_histogram(fill = "steelblue", alpha = 0.6) +
   facet_wrap(~ SetPoint, scales = "free") +
   labs(title = "", x = "Value", y = "Density") +
   theme_minimal()
@@ -84,7 +84,7 @@ data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
 
 # Create density plots in a grid
 ggplot(data_long, aes(x = Value)) +
-  geom_density(fill = "steelblue", alpha = 0.6) +
+  geom_histogram(fill = "steelblue", alpha = 0.6) +
   facet_wrap(~ SetPoint, scales = "free") +
   labs(title = "", x = "Value", y = "Density") +
   theme_minimal()
@@ -97,7 +97,7 @@ data_long <- melt(data_subset, variable.name = "SetPoint", value.name = "Value")
 
 # Create density plots in a grid
 ggplot(data_long, aes(x = Value)) +
-  geom_density(fill = "steelblue", alpha = 0.6) +
+  geom_histogram(fill = "steelblue", alpha = 0.6) +
   facet_wrap(~ SetPoint, scales = "free") +
   labs(title = "", x = "Value", y = "Density") +
   theme_minimal()
@@ -120,7 +120,7 @@ ggplot(data, aes(x = log_corrected_potency)) +
   theme_minimal()
 
 # Plot histogram for Inflection, colored by Family
-ggplot(train_data, aes(x = Inflection, fill = Family)) +
+ggplot(data, aes(x = Inflection, fill = Family)) +
   geom_histogram(bins = 30, color = "black", alpha = 0.7, position = "identity") +
   labs(title = "Histogram of Inflection by Family", x = "Inflection", y = "Frequency") +
   scale_fill_manual(values = c("skyblue", "coral")) +  # Customize colors for each Family
