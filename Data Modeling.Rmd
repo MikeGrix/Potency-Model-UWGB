@@ -177,7 +177,7 @@ xgb_rmse <- sqrt(mean((test_data$corrected_potency - xgb_predictions_original_sc
 xgb_mae <- mean(abs(test_data$corrected_potency - xgb_predictions_original_scale))
 
 
-xgb.importance(model = xgb_model$finalModel)
+xgb_feats = xgb.importance(model = xgb_model$finalModel)
 
 ```
 
@@ -188,7 +188,8 @@ preprocess_params <- preProcess(train_data, method = c("center", "scale"))
 ann_train_data <- predict(preprocess_params, train_data)
 
 test_data$log_corrected_potency <- log(test_data$corrected_potency)
-data_temp <- test_data %>% select(-corrected_potency)
+
+data_temp <- test_data[, !names(test_data) %in% "corrected_potency"]
 
 ann_test_data <- predict(preprocess_params, data_temp)
 
