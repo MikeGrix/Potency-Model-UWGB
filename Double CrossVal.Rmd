@@ -1,0 +1,139 @@
+---
+title: "Double CrossVal"
+author: "Michael Grix"
+date: "2024-11-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(glmnet)
+library(caret)
+```
+
+
+```{r}
+############# ASSUMPTIONS #############
+#Run this markdown file after Data Modeling.Rmd
+#This assumes that all of the models are loaded. 
+
+dim(data)
+n = dim(data)[1]
+
+############# Model specifications #############
+# Linear
+Model1 = xgb_model$finalModel
+Model2 = svr_model$finalModel
+
+allModels = list(Model1,Model2)	
+
+```
+
+
+```{r}
+
+###################################################################
+##### Double cross-validation for modeling-process assessment #####				 
+###################################################################
+
+##### model assessment OUTER shell #####
+# produce loops for 10-fold cross-validation for model ASSESSMENT
+nfolds = 10
+groups = rep(1:nfolds,length=n)  #produces list of group labels
+set.seed(42)
+cvgroups = sample(groups,n)  #orders randomly
+
+# set up storage for predicted values from the double-cross-validation
+allpredictedCV = rep(NA,n)
+
+# set up storage to see what models are "best" on the inner loops
+allbestTypes = rep(NA,nfolds)
+allbestPars = vector("list",nfolds)
+
+All_columns <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B","Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
+
+xbgImp_columns <-c("Adjuvent.Conc","Family","Vacc_age","Growth.Max","Growth.Slope.B","Protein.Conc.D","Protein.Conc.A","Protein.C","Growth.Time.B","Production.Set.Point.B")
+
+train_control <- trainControl(method = "cv", number = 10)  # cross-validation
+
+xgb_tune = xgb_model$bestTune
+
+# loop through outer splits
+for (j in 1:nfolds)  {  #be careful not to re-use loop indices
+  groupj = (cvgroups == j)
+  
+  traindata1 = data[!groupj, c(All_columns, "log_corrected_potency")]
+  traindata2 = data[!groupj, c(xbgImp_columns, "log_corrected_potency")]
+  
+  validdata = data[groupj, ]
+
+  SVR_All = train(log_corrected_potency ~ ., data = traindata1, method = "svmRadial", trControl = train_control)
+  SVR_imp = train(log_corrected_potency ~ ., data = traindata2, method = "svmRadial", trControl = train_control)
+  
+  xgb_all <- train(log_corrected_potency ~ .,data = traindata1, method = "xgbTree", trControl = train_control, tuneGrid = xgb_model$bestTune, verbosity = 0)
+  xgb_imp <- train(log_corrected_potency ~ .,data = traindata2, method = "xgbTree", trControl = train_control, tuneGrid = xgb_model$bestTune, verbosity = 0)
+  
+  SVR_All_rmse = mean(SVR_All$resample$RMSE)
+  SVR_imp_rmse = mean(SVR_imp$resample$RMSE)
+  xgb_All_rmse = mean(xgb_all$resample$RMSE)
+  xgb_imp_rmse = mean(xgb_imp$resample$RMSE)
+  
+    ############# identify selected model to fit to full data #############
+  # all best models
+  all_RMSE = c(SVR_All_rmse, SVR_imp_rmse, xgb_All_rmse, xgb_imp_rmse)
+  
+  bestmodels = (1:4)[all_RMSE == min(all_RMSE)]
+  bestmodel = ifelse(length(bestmodels)==1,bestmodels,sample(bestmodels,1))
+  print(all_RMSE)
+  print(paste("Best model at outer loop",j,"is",bestmodel))
+  
+  
+  if (bestmodel == 1)   predictvalid = as.numeric(predict(SVR_All, validdata))
+  if (bestmodel == 2)   predictvalid = as.numeric(predict(SVR_imp, validdata))
+  if (bestmodel == 3)   predictvalid = as.numeric(predict(xgb_all, validdata))
+  if (bestmodel == 4)   predictvalid = as.numeric(predict(xgb_imp, validdata))
+
+  
+  allpredictedCV[groupj] = predictvalid
+
+}
+
+```
+```{r}
+result_table <- data.frame(
+  Log_Actual = data$log_corrected_potency,
+  Log_Predicted = allpredictedCV
+)
+
+result_table <- result_table %>%
+  mutate(
+    Actual = exp(Log_Actual),
+    Predicted = exp(Log_Predicted)
+)
+
+
+ggplot(result_table, aes(x = Actual, y = Predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +  # Scatter points
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Reference line
+  labs(
+    title = "Actual vs Predicted",
+    x = "Actual Values (Unlogged)",
+    y = "Predicted Values (Unlogged)"
+  ) +
+  theme_minimal()
+
+MAE <- mean(abs(result_table$Actual - result_table$Predicted))
+RMSE <- sqrt(mean((result_table$Actual - result_table$Predicted)^2))
+R2 <- 1 - (sum((result_table$Actual - result_table$Predicted)^2) /
+           sum((result_table$Actual - mean(result_table$Actual))^2))
+
+
+cat("Mean Absolute Error (MAE):", MAE, "\n")
+cat("Root Mean Squared Error (RMSE):", RMSE, "\n")
+cat("R-Squared (R²):", R2, "\n")
+```
+
