@@ -58,6 +58,8 @@ All_columns <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Pro
 
 xbgImp_columns <-c("Adjuvent.Conc","Family","Vacc_age","Growth.Max","Growth.Slope.B","Protein.Conc.D","Protein.Conc.A","Protein.C","Growth.Time.B","Production.Set.Point.B")
 
+SVRImp_columns <-c("Family","Production.Set.Point.B","Production.Set.Point.C","Growth.Slope.A","Growth.Time.B","Protein.Conc.D","Adjuvent.Conc", "Vacc_age")
+
 train_control <- trainControl(method = "cv", number = 10)  # cross-validation
 
 xgb_tune = xgb_model$bestTune
@@ -67,7 +69,8 @@ for (j in 1:nfolds)  {  #be careful not to re-use loop indices
   groupj = (cvgroups == j)
   
   traindata1 = data[!groupj, c(All_columns, "log_corrected_potency")]
-  traindata2 = data[!groupj, c(xbgImp_columns, "log_corrected_potency")]
+  traindata2 = data[!groupj, c(SVRImp_columns, "log_corrected_potency")]
+  traindata3 = data[!groupj, c(xbgImp_columns, "log_corrected_potency")]
   
   validdata = data[groupj, ]
 
@@ -75,7 +78,7 @@ for (j in 1:nfolds)  {  #be careful not to re-use loop indices
   SVR_imp = train(log_corrected_potency ~ ., data = traindata2, method = "svmRadial", trControl = train_control)
   
   xgb_all <- train(log_corrected_potency ~ .,data = traindata1, method = "xgbTree", trControl = train_control, tuneGrid = xgb_model$bestTune, verbosity = 0)
-  xgb_imp <- train(log_corrected_potency ~ .,data = traindata2, method = "xgbTree", trControl = train_control, tuneGrid = xgb_model$bestTune, verbosity = 0)
+  xgb_imp <- train(log_corrected_potency ~ .,data = traindata3, method = "xgbTree", trControl = train_control, tuneGrid = xgb_model$bestTune, verbosity = 0)
   
   SVR_All_rmse = mean(SVR_All$resample$RMSE)
   SVR_imp_rmse = mean(SVR_imp$resample$RMSE)
@@ -105,6 +108,7 @@ for (j in 1:nfolds)  {  #be careful not to re-use loop indices
 ```
 ```{r}
 result_table <- data.frame(
+  Family = data$Family,
   Log_Actual = data$log_corrected_potency,
   Log_Predicted = allpredictedCV
 )
@@ -116,13 +120,16 @@ result_table <- result_table %>%
 )
 
 
-ggplot(result_table, aes(x = Actual, y = Predicted)) +
-  geom_point(color = "blue", alpha = 0.6) +  # Scatter points
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Reference line
+ggplot(result_table, aes(x = Actual, y = Predicted, color = Family)) +
+  geom_point(alpha = 0.6) +  # Scatter points with color by "Family"
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Line of identity
+  geom_smooth(method = "lm", se = FALSE, aes(group = Family), linetype = "solid") +  # Linear fit lines by "Family"
+  lims(x = c(35, 240), y = c(35, 240)) +
   labs(
     title = "Actual vs Predicted",
     x = "Actual Values (Unlogged)",
-    y = "Predicted Values (Unlogged)"
+    y = "Predicted Values (Unlogged)",
+    color = "Family"
   ) +
   theme_minimal()
 
@@ -135,5 +142,42 @@ R2 <- 1 - (sum((result_table$Actual - result_table$Predicted)^2) /
 cat("Mean Absolute Error (MAE):", MAE, "\n")
 cat("Root Mean Squared Error (RMSE):", RMSE, "\n")
 cat("R-Squared (R²):", R2, "\n")
+
+```
+
+```{r}
+
+# Calculate log-normal density values for each family
+result_table_with_density <- result_table %>%
+  group_by(Family) %>%
+  mutate(
+    n_obs = n(),  # Total observations in the family
+    mean_log_actual = mean(log(Actual), na.rm = TRUE),
+    sd_log_actual = sd(log(Actual), na.rm = TRUE),
+    mean_log_predicted = mean(log(Predicted), na.rm = TRUE),
+    sd_log_predicted = sd(log(Predicted), na.rm = TRUE),
+    density_actual = dlnorm(Actual, meanlog = mean_log_actual, sdlog = sd_log_actual) * n_obs,
+    density_predicted = dlnorm(Predicted, meanlog = mean_log_predicted, sdlog = sd_log_predicted) * n_obs
+  )
+
+# Plot the histograms with family-specific log-normal distribution lines
+ggplot(result_table_with_density) +
+  geom_histogram(aes(x = Actual, fill = "Actual"), bins = 30, alpha = 0.5, position = "identity") +
+  geom_histogram(aes(x = Predicted, fill = "Predicted"), bins = 30, alpha = 0.5, position = "identity") +
+  geom_line(aes(x = Actual, y = density_actual, color = "Actual"), linetype = "dashed") +
+  geom_line(aes(x = Predicted, y = density_predicted, color = "Predicted"), linetype = "dashed") +
+  facet_wrap(~Family, scales = "free_y") +  # Split histograms by Family
+  scale_fill_manual(values = c("Actual" = "blue", "Predicted" = "orange")) +  # Custom colors for fill
+  scale_color_manual(values = c("Actual" = "blue", "Predicted" = "orange")) +  # Custom colors for lines
+  labs(
+    title = "Histograms of Actual vs Predicted with Family-Specific Log-Normal Distribution",
+    x = "Values (Unlogged)",
+    y = "Frequency",
+    fill = "Variable",
+    color = "Log-Normal Curve"
+  ) +
+  theme_minimal()
+
+
 ```
 
