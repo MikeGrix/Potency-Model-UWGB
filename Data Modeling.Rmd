@@ -16,10 +16,12 @@ library(caret)  # for data splitting and modeling
 library(e1071)  # for SVR
 library(randomForest)  # for Random Forest Regression
 library(xgboost)
-
 library(nnet)
-library(ggplot2)
 
+library(shapviz)
+library(fastshap)
+
+library(ggplot2)
 library(DiagrammeR)
 
 ```
@@ -56,6 +58,26 @@ svr_model <- train(
   method = "svmRadial",
   trControl = train_control
 )
+
+# Custom prediction function for fastshap
+predict_function <- function(object, newdata) {
+  predict(object, newdata)
+}
+
+# Compute SHAP values using fastshap
+set.seed(123)
+shap_values <- fastshap::explain(
+  object = svr_model,        # Trained model
+  X = train_data[, -ncol(train_data)], # Feature data
+  pred_wrapper = predict_function,     # Prediction function
+  nsim = 50                            # Number of simulations for SHAP
+)
+
+# Create shapviz object
+sv <- shapviz(shap_values, X = train_data[, -ncol(train_data)])
+
+sv_importance(sv, show_numbers = TRUE)
+
 
 # Predict on the test set
 svr_predictions <- predict(svr_model, test_data)
