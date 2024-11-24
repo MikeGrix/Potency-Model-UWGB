@@ -24,41 +24,57 @@ library(caret)
 dim(data)
 n = dim(data)[1]
 
-############# Model specifications #############
-# Linear
-Model1 = xgb_model$finalModel
-Model2 = svr_model$finalModel
-
-allModels = list(Model1,Model2)	
-
 ```
 
 
 ```{r}
 
-###################################################################
-##### Double cross-validation for modeling-process assessment #####				 
-###################################################################
-
-##### model assessment OUTER shell #####
-# produce loops for 10-fold cross-validation for model ASSESSMENT
 nfolds = 10
-groups = rep(1:nfolds,length=n)  #produces list of group labels
+groups = rep(1:nfolds,length=n)  
 set.seed(42)
-cvgroups = sample(groups,n)  #orders randomly
+cvgroups = sample(groups,n)  
 
 # set up storage for predicted values from the double-cross-validation
 allpredictedCV = rep(NA,n)
 
 # set up storage to see what models are "best" on the inner loops
-allbestTypes = rep(NA,nfolds)
-allbestPars = vector("list",nfolds)
+RMSEbyRound <- data.frame(
+  Fold = integer(nfolds),
+  SVR_All_RMSE = numeric(nfolds),
+  SVR_Imp_RMSE = numeric(nfolds),
+  XGB_All_RMSE = numeric(nfolds),
+  XGB_Imp_RMSE = numeric(nfolds),
+  Best_Model = integer(nfolds)
+)
+
 
 All_columns <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B","Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
 
-xbgImp_columns <-c("Adjuvent.Conc","Family","Vacc_age","Growth.Max","Growth.Slope.B","Protein.Conc.D","Protein.Conc.A","Protein.C","Growth.Time.B","Production.Set.Point.B")
+xbgImp_columns <-c(
+  "Adjuvent.Conc",
+  "Protein.Conc.D",
+  "Vacc_age",
+  "Protein.C",
+  "Family",
+  "Growth.Max",
+  "Growth.Slope.A",
+  "Growth.Slope.B",
+  "Growth.Time.B",
+  "Protein.Conc.A"
+)
 
-SVRImp_columns <-c("Family","Production.Set.Point.B","Production.Set.Point.C","Growth.Slope.A","Growth.Time.B","Protein.Conc.D","Adjuvent.Conc", "Vacc_age")
+SVRImp_columns <-c(
+"Family",
+"Growth.Time.B",
+"Adjuvent.Conc",
+"Protein.Conc.D",
+"Production.Set.Point.B",
+"Vacc_age",
+"Production.Set.Point.C",
+"Growth.Slope.A",
+"Production.Set.Point.D",
+"Protein.C"
+)
 
 train_control <- trainControl(method = "cv", number = 10)  # cross-validation
 
@@ -94,6 +110,16 @@ for (j in 1:nfolds)  {  #be careful not to re-use loop indices
   print(all_RMSE)
   print(paste("Best model at outer loop",j,"is",bestmodel))
   
+    # Store RMSE and best model for the current fold
+  RMSEbyRound[j, ] <- list(
+    Fold = j,
+    SVR_All_RMSE = SVR_All_rmse,
+    SVR_Imp_RMSE = SVR_imp_rmse,
+    XGB_All_RMSE = xgb_All_rmse,
+    XGB_Imp_RMSE = xgb_imp_rmse,
+    Best_Model = bestmodel
+  )
+  
   
   if (bestmodel == 1)   predictvalid = as.numeric(predict(SVR_All, validdata))
   if (bestmodel == 2)   predictvalid = as.numeric(predict(SVR_imp, validdata))
@@ -106,6 +132,8 @@ for (j in 1:nfolds)  {  #be careful not to re-use loop indices
 }
 
 ```
+
+
 ```{r}
 result_table <- data.frame(
   Family = data$Family,
@@ -122,13 +150,12 @@ result_table <- result_table %>%
 
 ggplot(result_table, aes(x = Actual, y = Predicted, color = Family)) +
   geom_point(alpha = 0.6) +  # Scatter points with color by "Family"
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Line of identity
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "Gray") +  # Line of identity
   geom_smooth(method = "lm", se = FALSE, aes(group = Family), linetype = "solid") +  # Linear fit lines by "Family"
   lims(x = c(35, 240), y = c(35, 240)) +
   labs(
-    title = "Actual vs Predicted",
-    x = "Actual Values (Unlogged)",
-    y = "Predicted Values (Unlogged)",
+    x = "Measured RP",
+    y = "Predicted RP",
     color = "Family"
   ) +
   theme_minimal()
@@ -162,16 +189,15 @@ result_table_with_density <- result_table %>%
 
 # Plot the histograms with family-specific log-normal distribution lines
 ggplot(result_table_with_density) +
-  geom_histogram(aes(x = Actual, fill = "Actual"), bins = 30, alpha = 0.5, position = "identity") +
+  geom_histogram(aes(x = Actual, fill = "Measured"), bins = 30, alpha = 0.5, position = "identity") +
   geom_histogram(aes(x = Predicted, fill = "Predicted"), bins = 30, alpha = 0.5, position = "identity") +
-  geom_line(aes(x = Actual, y = density_actual, color = "Actual"), linetype = "dashed") +
+  geom_line(aes(x = Actual, y = density_actual, color = "Measured"), linetype = "dashed") +
   geom_line(aes(x = Predicted, y = density_predicted, color = "Predicted"), linetype = "dashed") +
   facet_wrap(~Family, scales = "free_y") +  # Split histograms by Family
-  scale_fill_manual(values = c("Actual" = "blue", "Predicted" = "orange")) +  # Custom colors for fill
-  scale_color_manual(values = c("Actual" = "blue", "Predicted" = "orange")) +  # Custom colors for lines
+  scale_fill_manual(values = c("Measured" = "blue", "Predicted" = "orange")) +  # Custom colors for fill
+  scale_color_manual(values = c("Measured" = "blue", "Predicted" = "orange")) +  # Custom colors for lines
   labs(
-    title = "Histograms of Actual vs Predicted with Family-Specific Log-Normal Distribution",
-    x = "Values (Unlogged)",
+    x = "Relative Potency",
     y = "Frequency",
     fill = "Variable",
     color = "Log-Normal Curve"
