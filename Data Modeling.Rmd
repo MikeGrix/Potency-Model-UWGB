@@ -37,7 +37,7 @@ columns_to_use <- c("Family","Production.Set.Point.B","Production.Set.Point.C","
 
 
 # Split data into training and testing sets (80% training, 20% testing)
-set.seed(645)  # for reproducibility
+
 train_index <- createDataPartition(data$log_corrected_potency, p = 0.8, list = FALSE)
 train_data <- data[train_index, ]
 test_data <- data[-train_index, ]
@@ -65,7 +65,7 @@ predict_function <- function(object, newdata) {
 }
 
 # Compute SHAP values using fastshap
-set.seed(123)
+
 shap_values <- fastshap::explain(
   object = svr_model,        # Trained model
   X = train_data[, -ncol(train_data)], # Feature data
@@ -77,6 +77,10 @@ shap_values <- fastshap::explain(
 sv <- shapviz(shap_values, X = train_data[, -ncol(train_data)])
 
 sv_importance(sv, show_numbers = TRUE)
+
+
+shap_values_summary <- colMeans(abs(shap_values))
+print(shap_values_summary)  # Check if any variables have zero mean SHAP values
 
 
 # Predict on the test set
@@ -106,7 +110,6 @@ train_control <- trainControl(
   verboseIter = TRUE     # To see progress
 )
 
-#set.seed(123)  # For reproducibility
 
 # Train the Random Forest model with cross-validation
 tuned_rfr <- train(
@@ -179,7 +182,7 @@ tune_grid <- expand.grid(
 # Define control for training
 train_control <- trainControl(method = "cv", number = 3)  # 5-fold cross-validation
 
-#set.seed(123)  # For reproducibility
+
 
 xgb_model <- train(
     log_corrected_potency ~ .,              # Use the log-transformed potency variable
@@ -190,7 +193,7 @@ xgb_model <- train(
     verbosity = 0
 )
 
-
+validated
 xgb_predictions <- predict(xgb_model, newdata = test_data)
 xgb_predictions_original_scale = exp(xgb_predictions)
 
@@ -200,6 +203,9 @@ xgb_mae <- mean(abs(test_data$corrected_potency - xgb_predictions_original_scale
 
 
 xgb_feats = xgb.importance(model = xgb_model$finalModel)
+
+# Plot the importance
+xgb.plot.importance(xgb_feats)
 
 ```
 
@@ -218,8 +224,8 @@ ann_test_data <- predict(preprocess_params, data_temp)
 
 # Define hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  size = c(3, 5, 7),        # Number of units in the hidden layer
-  decay = c(0.1, 0.01, 0.001)  # Regularization parameter to avoid overfitting
+  size = c(1,2,3),        # Number of units in the hidden layer
+  decay = c(.02)  # Regularization parameter to avoid overfitting
 )
 
 # Set up cross-validation
@@ -230,7 +236,6 @@ train_control <- trainControl(
 )
 
 # Train the ANN model
-set.seed(123)  # For reproducibility
 ann_model <- train(
   log_corrected_potency ~ .,      # Target and predictors
   data = train_data,              # Training dataset
@@ -356,11 +361,7 @@ ggplot(test_data, aes(x = corrected_potency)) +
   # Identity line
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
   
-  # Color and labeling adjustments
-  scale_color_manual(
-    values = c("SVR" = "#00AFBB", "RFR" = "#E7B80D", "XGB" = "#FC4E07", "ANN" = "#663399"),
-    labels = c("SVR", "RFR", "XGB", "ANN")
-  ) +
+ 
   labs(x = "Measured Relative Potency", y = "Predicted Realtive Potency") +
   
   # Faceting with free scales for each Family
