@@ -193,7 +193,7 @@ xgb_model <- train(
     verbosity = 0
 )
 
-validated
+
 xgb_predictions <- predict(xgb_model, newdata = test_data)
 xgb_predictions_original_scale = exp(xgb_predictions)
 
