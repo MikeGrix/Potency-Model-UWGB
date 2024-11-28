@@ -48,9 +48,27 @@ RMSEbyRound <- data.frame(
 )
 
 
-All_columns <- c("Family","Production.Set.Point.B","Production.Set.Point.C","Production.Set.Point.D","Growth.Time.A","Growth.Slope.A","Growth.Slope.B","Growth.Max","Growth.Slope.C","Growth.Time.B","Protein.Conc.A","Protein.C","Protein.Conc.D","Adjuvent.Conc","Protein.Conc.B_KNNimputed","Protein.Conc.C_KNNimputed", "Vacc_age")
+All_columns <- c(
+  "Family",
+  "Production.Set.Point.B",
+  "Production.Set.Point.C",
+  "Production.Set.Point.D",
+  "Growth.Time.A",
+  "Growth.Slope.A",
+  "Growth.Slope.B",
+  "Growth.Max",
+  "Growth.Slope.C",
+  "Growth.Time.B",
+  "Protein.Conc.A",
+  "Protein.C",
+  "Protein.Conc.D",
+  "Adjuvent.Conc",
+  "Protein.Conc.B_KNNimputed",
+  "Protein.Conc.C_KNNimputed",
+  "Vacc_age"
+)
 
-xbgImp_columns <-c(
+xbgImp_columns <- c(
   "Adjuvent.Conc",
   "Protein.Conc.D",
   "Vacc_age",
@@ -63,17 +81,17 @@ xbgImp_columns <-c(
   "Protein.Conc.A"
 )
 
-SVRImp_columns <-c(
-"Family",
-"Growth.Time.B",
-"Adjuvent.Conc",
-"Protein.Conc.D",
-"Production.Set.Point.B",
-"Vacc_age",
-"Production.Set.Point.C",
-"Growth.Slope.A",
-"Production.Set.Point.D",
-"Protein.C"
+SVRImp_columns <- c(
+  "Family",
+  "Growth.Time.B",
+  "Adjuvent.Conc",
+  "Protein.Conc.D",
+  "Production.Set.Point.B",
+  "Vacc_age",
+  "Production.Set.Point.C",
+  "Growth.Slope.A",
+  "Production.Set.Point.D",
+  "Protein.C"
 )
 
 train_control <- trainControl(method = "cv", number = 10)  # cross-validation
@@ -204,6 +222,50 @@ ggplot(result_table_with_density) +
   ) +
   theme_minimal()
 
+
+```
+```{r}
+# Define ranges for important variables
+Family <- unique(data$Family)  # Assuming Family is categorical
+Growth.Time.B <- seq(min(data$Growth.Time.B), max(data$Growth.Time.B), length.out = 4)
+Adjuvent.Conc <- seq(min(data$Adjuvent.Conc), max(data$Adjuvent.Conc), length.out = 4)
+Protein.Conc.D <- seq(min(data$Protein.Conc.D), max(data$Protein.Conc.D), length.out = 4)
+Production.Set.Point.B <- seq(min(data$Production.Set.Point.B), max(data$Production.Set.Point.B), length.out = 4)
+Vacc_age <- seq(min(data$Vacc_age), max(data$Vacc_age), length.out = 4)
+Production.Set.Point.C <- seq(min(data$Production.Set.Point.C), max(data$Production.Set.Point.C), length.out = 4)
+Growth.Slope.A <- seq(min(data$Growth.Slope.A), max(data$Growth.Slope.A), length.out = 4)
+Production.Set.Point.D <- seq(min(data$Production.Set.Point.D), max(data$Production.Set.Point.D), length.out = 4)
+Protein.C <- seq(min(data$Protein.C), max(data$Protein.C), length.out = 4)
+
+# Create a grid of combinations
+new_data <- expand.grid(
+  Family = Family,
+  Growth.Time.B = Growth.Time.B,
+  Adjuvent.Conc = Adjuvent.Conc,
+  Protein.Conc.D = Protein.Conc.D,
+  Production.Set.Point.B = Production.Set.Point.B,
+  Vacc_age = Vacc_age,
+  Production.Set.Point.C = Production.Set.Point.C,
+  Growth.Slope.A = Growth.Slope.A,
+  Production.Set.Point.D = Production.Set.Point.D,
+  Protein.C = Protein.C
+)
+
+# Predict using the SVR model
+new_data$predicted <- predict(SVR_imp, new_data)
+new_data$Relative_Potency <- exp(new_data$predicted)
+
+# Summarize predicted values
+summary(new_data$Relative_Potency)
+
+# Visualize (example with two variables)
+library(ggplot2)
+ggplot(new_data, aes(x = Growth.Time.B, y = Adjuvent.Conc, fill = Relative_Potency)) +
+  geom_tile() +
+  labs(title = "Predicted Outcomes Across Variable Ranges",
+       x = "Growth Time B",
+       y = "Adjuvent Concentration") +
+  scale_fill_viridis_c()
 
 ```
 
