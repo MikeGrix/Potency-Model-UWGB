@@ -256,16 +256,41 @@ new_data$predicted <- predict(SVR_imp, new_data)
 new_data$Relative_Potency <- exp(new_data$predicted)
 
 # Summarize predicted values
-summary(new_data$Relative_Potency)
+family_summary <- new_data %>%
+  group_by(Family) %>%
+  summarise(
+    Min = min(Relative_Potency, na.rm = TRUE),
+    Max = max(Relative_Potency, na.rm = TRUE),
+    Mean = mean(Relative_Potency, na.rm = TRUE),
+  )
 
-# Visualize (example with two variables)
-library(ggplot2)
-ggplot(new_data, aes(x = Growth.Time.B, y = Adjuvent.Conc, fill = Relative_Potency)) +
-  geom_tile() +
-  labs(title = "Predicted Outcomes Across Variable Ranges",
-       x = "Growth Time B",
-       y = "Adjuvent Concentration") +
-  scale_fill_viridis_c()
+# View the summary
+print(family_summary)
+
+
+# Calculate min and max for each Family
+family_stats <- new_data %>%
+  group_by(Family) %>%
+  summarise(
+    min_potency = min(Relative_Potency, na.rm = TRUE),
+    max_potency = max(Relative_Potency, na.rm = TRUE)
+  )
+
+# Merge the stats back to the main data for faceting
+new_data <- left_join(new_data, family_stats, by = "Family")
+
+# Plot with vertical lines for min and max
+ggplot(new_data, aes(x = Relative_Potency)) +
+  geom_histogram(binwidth = 0.25, fill = "blue", color = "black", alpha = 0.7) +  # Adjust binwidth
+  geom_vline(aes(xintercept = min_potency), color = "red", linetype = "dashed", size = 0.8) +
+  geom_vline(aes(xintercept = max_potency), color = "green", linetype = "dashed", size = 0.8) +
+  labs(
+    title = "Predicted Outcomes Across Variable Ranges by Family",
+    x = "Relative Potency",
+    y = "Frequency"
+  ) +
+  facet_wrap(~ Family, scales = "free") +
+  theme_minimal()
 
 ```
 
