@@ -224,6 +224,7 @@ ggplot(result_table_with_density) +
 
 
 ```
+
 ```{r}
 # Define ranges for important variables
 Family <- unique(data$Family)  # Assuming Family is categorical
