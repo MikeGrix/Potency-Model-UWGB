@@ -1,1 +1,10 @@
-//TODO
+Source data is contained in the RawData Folder
+Data throughout the analysis was saved into the Clean Data Folder
+
+Progression of Files:
+
+1. Data Cleaning
+2. Data Imputation
+3. Data Exploration and Final Cleaning
+4. Data Modeling // Optionally, "Data Modeling Inflection Point" - This file was not considered further
+5. Double CrossVal
